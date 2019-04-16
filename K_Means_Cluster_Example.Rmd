@@ -1,0 +1,364 @@
+---
+title: "K Means Clustering Using R"
+author: "Abdul Yunus"
+date: "April 10, 2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+K-means is an unsupervised machine learning algorithm used to find groups of observations (clusters) that share similar characteristics.
+
+A cluster is defined as a group of observations that are **more similar to each other** than they are to the observations in other groups.
+  
+Cluster analysis is widely used in the biological and behavioral sciences, marketing, and medical research. For example, a psychological researcher might cluster data on the symptoms and demographics of depressed patients, seeking to uncover subtypes of depression. 
+The hope would be that finding such subtypes might lead to more targeted and effective treatments and a better understanding of the disorder.
+Marketing researchers use cluster analysis as a customer-segmentation strategy.
+Customers are arranged into clusters based on the similarity of their demographics and buying behaviors. Marketing campaigns are then tailored to appeal to one or more of these subgroups.
+
+
+The two most popular clustering approaches are hierarchical agglomerative clustering and partitioning clustering.
+
+In this topic, we are discussing about K means clustering which comes under partitioning clustering.
+
+
+### Common steps in cluster analysis
+
+An effective cluster analysis is a multistep process with numerous decision points. Each decision can affect the quality and usefulness of the results.
+
+**1. Choose appropriate attributes**
+
+  The first (and perhaps most important) step is to select variables that you feel may be important for identifying and understanding differences among groups of observations within the data. For example, in a study of depression, you might want to assess one or more of the following: psychological symptoms; physical symptoms; age at onset; number, duration, and timing of episodes; number of hospitalizations; functional status with regard to self-care; social and work history; current age; gender; ethnicity; socioeconomic status; marital status; family medical history; and response to previous treatments. A sophisticated cluster analysis can't compensate for a poor choice of variables.
+
+
+**2. Scale the data **
+
+If the variables in the analysis vary in range, the variables with the largest range will have the greatest impact on the results. This is often undesirable, and analysts scale the data before continuing. The most popular approach is to standardize each variable to a mean of 0 and a standard deviation of 1.
+
+
+**3. Screen for outliers **
+
+Many clustering techniques are sensitive to outliers, distorting the cluster solutions obtained. You can screen for (and remove) univariate outliers using functions from the outliers package.
+The `mvoutlier` package contains functions that can be used to identify multivariate outliers.
+
+**4. Calculate distances **
+
+The most popular measure of the distance between two observations is the **Euclidean distance**, but the Manhattan, Canberra, asymmetric binary, maximum, and Minkowski distance measures are also available.
+
+
+**5. Select a clustering algorithm **
+
+Next, select a method of clustering the data. Hierarchical clustering is useful for smaller problems (say, 150 observations or less) and where a nested hierarchy of groupings is desired. The partitioning method can handle much larger problems but requires that the number of clusters be specified in advance.
+
+
+**6. Determine the number of clusters present **
+
+In order to obtain a final cluster solution, you must decide how many clusters are present in the data.
+
+
+**7. Obtain a final clustering solution **
+
+Once the number of clusters has been determined, a final clustering is performed to extract that number of subgroups.
+
+
+**8. Visualize the results **
+
+Visualization can help you determine the meaning and usefulness of the cluster solution. The results of a hierarchical clustering are usually presented as a dendrogram. Partitioning results are typically visualized using a bivariate cluster plot.
+
+**9. Interpret the clusters **
+
+Once a cluster solution has been obtained, you must interpret (and possibly name) the clusters. What do the observations in a cluster have in common? How do they differ from the observations in other clusters? This step is typically accomplished by obtaining summary statistics for each variable by cluster. For continuous data, the mean or median for each variable within each cluster is calculated. For mixed data (data that contain categorical variables), the summary statistics will also include modes or category distributions.
+
+
+**11. Validate the results **
+
+Validating the cluster solution involves asking the question, "Are these groupings in some sense real, and not a manifestation of unique aspects of this dataset or statistical technique?" If a different cluster method or different sample is employed, would the same clusters be obtained? The `fpc`, `clv`, and `clValid` packages each contain functions for evaluating the stability of a clustering solution.
+
+
+
+
+Enough of theory now, let's focus on the practice things.
+I would recommend to download all the required libraries first and import the **Wines** data. This dataset containing 13 chemical measurements on 178 Italian wine samples.
+Wines data is available on UCI Machine Learning Repository <http://www.ics.uci.edu/~mlearn/MLRepository.html>.
+
+
+#### Installed the required packages
+
+Let's installed and load the all required packages. In this section, we are using some very useful packages. It is not necessary that you will use the same packages, you can use any package which serve your purpose.
+
+We load a range of libraries for general data wrangling and general visualization together with more specialized tools.
+
+The below code is a function, which can help us to install any package if you don't have it, later it load the package. Therefore, no need to call the library function here
+
+
+```{r echo = T, message = FALSE, warning=FALSE, results='hide'}
+# Lets clean the unnecessary items
+gc()
+rm(list = ls(all = TRUE))
+
+
+packages<-function(x){
+  x<-as.character(match.call()[[2]])
+  if (!require(x,character.only=TRUE)){
+    install.packages(pkgs=x,repos="http://cran.r-project.org")
+    require(x,character.only=TRUE)
+  }
+}
+
+packages(tidyverse) # data manipulation
+packages(corrplot)
+packages(gridExtra)
+packages(GGally)
+packages(cluster) # clustering algorithms 
+packages(factoextra) # clustering algorithms & visualization
+
+```
+
+
+
+#### Load the Data
+We will be loading the Wines data from our local machine. The file is in '.csv' format.
+
+```{r, warning=FALSE, results= F}
+
+setwd("C:/Users/Abdul_Yunus/Desktop/Yunus_Personal/Learning/k Means Clustering")
+
+wines <- read.csv("Input/Wine.csv")
+
+```
+
+file:///C:/Users/Abdul_Yunus/Desktop/Yunus_Personal/Learning/k Means Clustering/Input/Wine.csv
+ 
+As we have said before, k-means is an unsupervised machine learning algorithm and works with unlabeled data. We don't need the Customer_Segment column. Let's remove this column from our data.
+
+```{r}
+wines <- wines[,-14]
+head(wines)
+```
+
+#### Data Analysis
+
+As a first step we will have an overview of the individual data sets using the *summary* and *str* function.
+
+Let's check the summary of the data set
+
+```{r}
+summary(wines)
+str(wines)
+```
+
+We can see that the all the variables are either numeric or integers, therefore, we can use these variables here. But it is always advisable to use only the relevant variable for the Cluster analysis.
+
+
+Let's visualize the variables available in the data. Plot the histogram of each attribute.
+
+```{r}
+wines %>%
+  gather(attributes, value, 1:13) %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(fill = 'lightblue2', color = 'black') +
+  facet_wrap(~attributes, scales = 'free_x') +
+  labs(x="Values", y="Frequency") +
+  theme_bw()
+```
+
+
+Let's build a correlation matrix to understand the relation between each attributes
+
+```{r}
+corrplot(cor(wines), type = 'upper', method = 'number', tl.cex = 0.9)
+```
+
+
+
+There is a strong linear correlation between Total_Phenols and Flavanoids. 
+We can model the relationship between these two variables by fitting a linear equation
+
+```{r}
+# Relationship between Phenols and Flavanoids
+ggplot(wines, aes(x = Total_Phenols, y = Flavanoids)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE) +
+  theme_bw()
+```
+
+
+let's prepare our data to do the K means clustering
+
+From the data summary, we have seen that there are variables who are on a different scale, we need to either scale the data or normalise it.
+We can normalise the data using the mean and standard deviation, also we can use scale function to normalise our data.
+
+```{r}
+winesNorm <- as.data.frame(scale(wines))
+head(winesNorm)
+
+```
+
+
+** Computing k-means clustering in R **
+
+We can compute k-means in R with the kmeans function. Here will group the data into two clusters (centers = 2). The kmeans function also has an nstart option that attempts multiple initial configurations and reports on the best one. For example, adding nstart = 25 will generate 25 initial configurations and reports on the best one. For example, adding nstart=25 generates 25 initial configurations. This approach is often recommended.
+
+```{r}
+set.seed(123)
+
+wines_K2 <- kmeans(winesNorm, centers = 2, nstart = 25)
+print(wines_K2)
+```
+
+
+An Analyst always try to visualize the data and results, let's visualize the cluster we have created, so far.
+
+```{r}
+fviz_cluster(wines_K2, data = winesNorm)
+```
+
+
+When we print the model we build (wines_k2), it shows information like, number of clusters, centers of the clusters, size of the clusters and
+sum of square.
+Let's check how to get these attributes of our model.
+
+```{r}
+# Clusters to which each point is associated
+wines_K2$cluster
+
+# Cluster centers
+wines_K2$centers
+
+# Cluster size
+wines_K2$size
+
+# Between clusters sum of square
+wines_K2$betweenss
+
+# Within cluster sum of square
+wines_K2$withinss
+
+# Total with sum of square
+wines_K2$tot.withinss
+
+# Total sum of square
+wines_K2$totss
+```
+
+Because the number of clusters **(k)** must be set before we start the algorithm, it is often advantageous to use several different values of k and examine the differences in the results. 
+
+We can execute the same process for 3, 4, and 5 clusters, and the results are shown in the figure:
+
+```{r}
+wines_K3 <- kmeans(winesNorm, centers = 3, nstart = 25)
+wines_K4 <- kmeans(winesNorm, centers = 4, nstart = 25)
+wines_K5 <- kmeans(winesNorm, centers = 5, nstart = 25)
+```
+
+We can plot these clusters for different K value to compare.
+
+```{r}
+p1 <- fviz_cluster(wines_K2, geom = "point", data = winesNorm) + ggtitle(" K = 2")
+p2 <- fviz_cluster(wines_K3, geom = "point", data = winesNorm) + ggtitle(" K = 3")
+p3 <- fviz_cluster(wines_K4, geom = "point", data = winesNorm) + ggtitle(" K = 4")
+p4 <- fviz_cluster(wines_K5, geom = "point", data = winesNorm) + ggtitle(" K = 5")
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+```
+
+#### Determining Optimal Clusters
+K-means clustering requires that you specify in advance the number of clusters to extract.
+A plot of the total within-groups sums of squares against the number of clusters in a k-means solution can be helpful. A bend in the graph can suggest the appropriate number of clusters.
+
+
+Below are the methods to determine the optimal number of clusters
+
+1. Elbow method
+2. Silhouette method
+3. Gap statistic
+
+```{r}
+# Determining Optimal clusters (k) Using Elbow method
+fviz_nbclust(x = winesNorm,FUNcluster = kmeans, method = 'wss' )
+
+```
+
+
+The above one line code work better to find the number of clusters using Elbow method, however, we can do the same thing by making a function which takes your data (winesNorm) as an input. Let's see the below line of code which is used as a function to create a plot to find number of clusters.
+
+
+```{r}
+wssplot <- function(data, nc = 15, set.seed = 1234){
+  wss <- (nrow(data) - 1)*sum(apply(data, 2, var))
+  for(i in 2:nc) {
+    set.seed(1234)
+    wss[i] <- sum(kmeans(x = data, centers = i, nstart = 25)$withinss)
+  }
+  plot(1:nc, wss, type = 'b', xlab = 'Number of Clusters', ylab = 'Within Group Sum of Square',
+       main = 'Elbow Method Plot to Find Optimal Number of Clusters', frame.plot = T,
+       col = 'blue', lwd = 1.5)
+}
+
+wssplot(winesNorm)
+```
+
+
+```{r}
+
+# Determining Optimal clusters (k) Using Average Silhouette Method
+
+fviz_nbclust(x = winesNorm,FUNcluster = kmeans, method = 'silhouette' )
+```
+
+
+There is another method called Gap-Static used for finding the optimal value of K.
+
+```{r}
+# compute gap statistic
+set.seed(123)
+gap_stat <- clusGap(x = winesNorm, FUN = kmeans, K.max = 15, nstart = 25, B = 50 )
+
+# Print the result
+print(gap_stat, method = "firstmax")
+
+# plot the result to determine the optimal number of clusters.
+fviz_gap_stat(gap_stat)
+```
+
+With most of these approaches suggesting 3 as the number of optimal clusters, we can perform the final analysis and extract the results using 3 clusters.
+
+```{r}
+# Compute k-means clustering with k = 3
+set.seed(123)
+final <- kmeans(winesNorm, centers = 3, nstart = 25)
+print(final)
+```
+
+
+We can visualize the results using the below code.
+
+```{r}
+fviz_cluster(final, data = winesNorm)
+```
+
+
+We can extract the clusters and add to our initial data to do some descriptive statistics at the cluster level
+```{r}
+winesNorm %>% 
+  mutate(Cluster = final$cluster) %>%
+  group_by(Cluster) %>%
+  summarize_all('median')
+```
+
+
+
+#### Summary
+K Means clustering is a simple algorithm used to partition n observations into k clusters in which each observation is belongs to the cluster with the nearest mean. 
+
+So far we have learned:
+
+ + prepare the data for cluster analysis (for K-Means cluster). Use the numerical variables and normalizing the data is recommended.
+ + Analyze the available data.
+ + Find optimal number of clusters using Elbow method, Silhouette method and Gap-Static method.
+ + Partitioning the data using the optimal number of clustering.
